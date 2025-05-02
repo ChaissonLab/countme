@@ -50,7 +50,7 @@ task countme_t {
 
         set -eux -o pipefail
 
-        # run countme
+        # run countme output stdout to file named for sample and inputs
         countme ~{bam} ~{bed} > ~{sample}.~{bamname}.~{bedname}.tsv
 
     >>>
