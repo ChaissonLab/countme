@@ -7,7 +7,7 @@ workflow countme {
         File bamIndex
         File bed
         String sample 
-        Int diskSizeGB = 1.5 * round(size(bam, "G")) + 20
+        Int diskSizeGB = round(size(bam, "G")) + 20
         #Int memSizeGb = 128
 
     }
@@ -18,7 +18,8 @@ workflow countme {
         bam=bam,
         bamIndex=bamIndex,
         bed=bed,
-        sample=sample
+        sample=sample,
+        diskSizeGB=diskSizeGB
         }
     
 
@@ -37,10 +38,9 @@ task countme_t {
         File bamIndex
         File bed
         String sample
-        String staging_gs_bucket
         Int memSizeGB = 40
-        Int threads = 12
-        Int diskSizeGB = 3 * round(size(unphasedMappedBAM, "GB")) + 40
+        Int threads = 1
+        Int diskSizeGB 
     }
 
     String bamname = basename(bam, ".bam")
