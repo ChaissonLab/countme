@@ -215,11 +215,20 @@ int main(int argc, char* argv[]) {
     int proc_read=0;
 
 
-
+    // Initialie counters for all intervals
+    vector<int> hi;
+    hi.push_back(0);
+    hi.push_back(1);
     for (auto& chrom: bed_intervals) {
       for (auto& bed: chrom.second) {
 	string label = bed.label();
 	interval_bed[label] = bed;
+	for (auto h: hi) {
+	  interval_sums[h][bed.label()].first =0;
+	  interval_sums[h][bed.label()].second = 0;
+	  interval_lengths[h][bed.label()].first = 0;
+	  interval_lengths[h][bed.label()].second = 0;
+	}
       }
     }
     while (sam_read1(in, hdr, b) >= 0) {
@@ -372,8 +381,8 @@ int main(int argc, char* argv[]) {
 	      interval_sums[h][bed.label()].second += total_c;
 	      interval_lengths[h][bed.label()].first += readIntvEndIdx - readIntvStartIdx;
 	      interval_lengths[h][bed.label()].second += 1;
-	      interval_bed[bed.label()] = bed;
 	    }
+	    interval_bed[bed.label()] = bed;
 	}
 	//	cout << "For " << read_name << " ovp " << overlapping.size() << " matched: " << nMatched << endl;
     }
