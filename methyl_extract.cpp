@@ -357,6 +357,7 @@ int main(int argc, char* argv[]) {
                     }
                 }
             }
+	    interval_bed[bed.label()] = bed;
 	    for (auto h: hapIndices) {
 	      interval_sums[h][bed.label()].first += methylated;
 	      interval_sums[h][bed.label()].second += total_c;
