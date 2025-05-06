@@ -193,7 +193,7 @@ void GetHapIndices(int hap, vector<int> &hapIdx) {
 
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " <input.bam> <input.bed>\n";
+        std::cerr << "Usage: countme <input.bam> <input.bed>\n";
         return 1;
     }
     vector<string> labels;
