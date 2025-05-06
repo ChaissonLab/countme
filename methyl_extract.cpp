@@ -214,7 +214,7 @@ int main(int argc, char* argv[]) {
     bam1_t* b = bam_init1();
     int proc_read=0;
 
-
+    cerr << "Running countme v0.3" << endl;
     // Initialie counters for all intervals
     vector<int> hi;
     hi.push_back(0);
