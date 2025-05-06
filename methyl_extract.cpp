@@ -214,7 +214,7 @@ int main(int argc, char* argv[]) {
     bam1_t* b = bam_init1();
     int proc_read=0;
 
-    cerr << "Running countme v0.3" << endl;
+    cerr << "Running countme v0.4" << endl;
     // Initialie counters for all intervals
     vector<int> hi;
     hi.push_back(0);
@@ -389,15 +389,23 @@ int main(int argc, char* argv[]) {
 
     for (auto label: labels) {
       vector<double> avgMethRatio(2,0), avgCpGCount(2,0), avgLen(2,0), nReads(2,0);
-      for (auto i =0; i < 2; i++) { 
-        const auto& [meSum, cpgCount] = interval_sums[i][label];
-        const auto& [lenSum, readCount] = interval_lengths[i][label];
-        double meanMeth = cpgCount == 0 ? -1.0 : ((float)meSum) / cpgCount;
-	double meanLen = readCount == 0 ? -1.0 : ((float) lenSum) / readCount;
-	nReads[i] = readCount;
-	avgMethRatio[i] = meanMeth;
-	avgCpGCount[i] = cpgCount;
-	avgLen[i] = meanLen;
+      for (auto i =0; i < 2; i++) {
+	if (interval_sums[i].find(label) != interval_sums[i].end()) {
+	  const auto& [meSum, cpgCount] = interval_sums[i][label];
+	  const auto& [lenSum, readCount] = interval_lengths[i][label];
+	  double meanMeth = cpgCount == 0 ? -1.0 : ((float)meSum) / cpgCount;
+	  double meanLen = readCount == 0 ? -1.0 : ((float) lenSum) / readCount;
+	  nReads[i] = readCount;
+	  avgMethRatio[i] = meanMeth;
+	  avgCpGCount[i] = cpgCount;
+	  avgLen[i] = meanLen;
+	}
+	else {
+	  nReads[i] = 0;
+	  avgMethRatio[i] = 0;
+	  avgCpGCount[i] = 0;
+	  avgLen[i] = 0;
+	}
       }
       std::cout << interval_bed[label].chrom << "\t"
 		<< interval_bed[label].start << "\t" 
