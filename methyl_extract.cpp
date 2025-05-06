@@ -213,6 +213,15 @@ int main(int argc, char* argv[]) {
     bam_hdr_t* hdr = sam_hdr_read(in);
     bam1_t* b = bam_init1();
     int proc_read=0;
+
+
+
+    for (auto& chrom: bed_intervals) {
+      for (auto& bed: chrom.second) {
+	string label = bed.label();
+	interval_bed[label] = bed;
+      }
+    }
     while (sam_read1(in, hdr, b) >= 0) {
       
         if (b->core.flag & BAM_FUNMAP) continue;
@@ -357,7 +366,7 @@ int main(int argc, char* argv[]) {
                     }
                 }
             }
-	    interval_bed[bed.label()] = bed;
+
 	    for (auto h: hapIndices) {
 	      interval_sums[h][bed.label()].first += methylated;
 	      interval_sums[h][bed.label()].second += total_c;
