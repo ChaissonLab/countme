@@ -64,6 +64,6 @@ task countme_t {
         memory: memSizeGB + " GB"
         cpu: threads
         disks: "local-disk " + diskSizeGB + " SSD"
-        docker: "mchaisso/countme@sha256:6437a844b3487731b197569265d15f6d3c73e22ce9997ee6c5b02945bcc0fdfa"
+        docker: "mchaisso/countme:v0.3"
     }
 }
