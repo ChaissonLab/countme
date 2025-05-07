@@ -252,6 +252,13 @@ int main(int argc, char* argv[]) {
 
         uint8_t* mm_data = bam_aux_get(b, "MM");
         uint8_t* ml_data = bam_aux_get(b, "ML");
+	if (mm_data == NULL) {
+	  mm_data = bam_aux_get(b, "Mm");
+	}
+	if (ml_data == NULL) {
+	  ml_data = bam_aux_get(b, "Ml");
+	}
+	
         if (!mm_data || !ml_data) continue;
 
         std::string mm_str = bam_aux2Z(mm_data);
