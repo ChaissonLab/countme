@@ -356,13 +356,14 @@ int main(int argc, char* argv[]) {
             std::vector<int> relevant;
 	    int methylated = 0;
 	    int total_c = 0;
+	    int minOverhang=100;
 	    vector<int>::iterator readIntvStart, readIntvEnd;
-	    if (ref_start >  bed.start) {
-	      //	      cout << "Read starts within bed interval" <<  bed.end - bed.start << endl;
+	    if (ref_start + minOverhang >  bed.start) {
+	      //	      cout << read_name << " starts within bed interval" <<  bed.end - bed.start << endl;
 	      continue;
 	    }
-	    if (ref_end < bed.end) {
-	      //	      cout <<"Read ends before end of bed interval " <<  bed.end - bed.start << endl;
+	    if (ref_end -minOverhang< bed.end) {
+	      //	      cout << read_name << " ends before end of bed interval " <<  bed.end - bed.start << endl;
 	      continue;
 	    }
 	    
