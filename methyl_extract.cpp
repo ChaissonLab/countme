@@ -214,7 +214,7 @@ int main(int argc, char* argv[]) {
     bam1_t* b = bam_init1();
     int proc_read=0;
 
-    cerr << "Running countme v0.4" << endl;
+    cerr << "Running countme v0.5" << endl;
     // Initialie counters for all intervals
     vector<int> hi;
     hi.push_back(0);
@@ -332,6 +332,7 @@ int main(int argc, char* argv[]) {
 	      }		
             }
         }
+
 	vector<int>::iterator readAlnStart = read_to_ref.begin(),  readAlnEnd = read_to_ref.end();
 	while(readAlnStart != read_to_ref.end() and *readAlnStart == -1) { readAlnStart++;}
 	while(readAlnEnd != readAlnStart ) {
@@ -356,6 +357,15 @@ int main(int argc, char* argv[]) {
 	    int methylated = 0;
 	    int total_c = 0;
 	    vector<int>::iterator readIntvStart, readIntvEnd;
+	    if (ref_start >  bed.start) {
+	      //	      cout << "Read starts within bed interval" <<  bed.end - bed.start << endl;
+	      continue;
+	    }
+	    if (ref_end < bed.end) {
+	      //	      cout <<"Read ends before end of bed interval " <<  bed.end - bed.start << endl;
+	      continue;
+	    }
+	    
 	    if (strand == 0) {
 	      readIntvStart = lower_bound(readAlnStart, readAlnEnd, bed.start);
 	      readIntvEnd   = upper_bound(readAlnStart, readAlnEnd, bed.end);
@@ -364,10 +374,17 @@ int main(int argc, char* argv[]) {
 	      readIntvStart = lower_bound(readAlnStart, readAlnEnd, bed.end, NegComp);
 	      readIntvEnd   = upper_bound(readAlnStart, readAlnEnd, bed.start, NegComp);
 	    }
+	    if (readIntvStart == read_to_ref.end() or readIntvEnd == read_to_ref.end() ) { continue;}
+
+	    if ((strand == 0 and *readIntvStart > bed.start) or (strand == 1 and *readIntvEnd > bed.start)) {
+	      //	      cout << "Read starting inside interval" << endl;
+	      continue;
+	    }
 	    int readIntvStartIdx = readIntvStart - read_to_ref.begin();
 	    int readIntvEndIdx = readIntvEnd - read_to_ref.begin();
 	    if (readIntvStartIdx >= readIntvEndIdx) {
 	    }
+
 	    else {
 	      nMatched++;
 	    }
@@ -386,6 +403,7 @@ int main(int argc, char* argv[]) {
 	    for (auto h: hapIndices) {
 	      interval_sums[h][bed.label()].first += methylated;
 	      interval_sums[h][bed.label()].second += total_c;
+	      //	      cout << read_name<< " hap: " << h << " adding length " << readIntvEndIdx - readIntvStartIdx<< " " << readIntvEndIdx  << " " << readIntvStartIdx << endl;
 	      interval_lengths[h][bed.label()].first += readIntvEndIdx - readIntvStartIdx;
 	      interval_lengths[h][bed.label()].second += 1;
 	    }
