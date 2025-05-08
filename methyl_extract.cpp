@@ -364,10 +364,12 @@ int main(int argc, char* argv[]) {
 	      readIntvStart = lower_bound(readAlnStart, readAlnEnd, bed.end, NegComp);
 	      readIntvEnd   = upper_bound(readAlnStart, readAlnEnd, bed.start, NegComp);
 	    }
+	    if (readIntvStart == read_to_ref.end() or readIntvEnd == read_to_ref.end() ) { continue;}
 	    int readIntvStartIdx = readIntvStart - read_to_ref.begin();
 	    int readIntvEndIdx = readIntvEnd - read_to_ref.begin();
 	    if (readIntvStartIdx >= readIntvEndIdx) {
 	    }
+	    
 	    else {
 	      nMatched++;
 	    }
