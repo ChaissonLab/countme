@@ -31,10 +31,10 @@ RUN wget https://github.com/samtools/htslib/releases/download/1.17/htslib-1.17.t
 
 ADD https://api.github.com/repos/chaissonlab/vamos/git/refs/heads/ version.json
 
-RUN wget https://github.com/ChaissonLab/countme/archive/refs/tags/countme-v0.1.tar.gz
-RUN tar zxvf  countme-v0.1.tar.gz
+RUN wget https://github.com/ChaissonLab/countme/archive/refs/tags/countme-v0.61.tar.gz
+RUN tar zxvf  countme-v0.61.tar.gz
 RUN ls 
-RUN cd countme-countme-v0.1/ && make CONDA_PREFIX=/usr/local
-RUN cd countme-countme-v0.1/ && cp countme /usr/bin
+RUN cd countme-countme-v0.61/ && make CONDA_PREFIX=/usr/local
+RUN cd countme-countme-v0.61/ && cp countme /usr/bin
 
 ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/lib"

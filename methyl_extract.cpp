@@ -11,6 +11,8 @@
 #include <cstring>
 #include <cstdlib>
 #include <tuple>
+#include <math.h>
+
 using namespace std;
 struct BedInterval {
     std::string chrom;
@@ -191,6 +193,21 @@ void GetHapIndices(int hap, vector<int> &hapIdx) {
   }
 }
 
+void SummaryStats(vector<pair<int,int> > &vals, int startOffset, int endOffset, float &mean, float &sd) {
+  float sum=0,sumsq=0;
+  if (vals.size() <= endOffset) {
+    mean=sd=0;
+    return;
+  }
+  for (int i=startOffset; i < vals.size() - endOffset; i++) {
+    int v=vals[i].first;
+    sum+=v; sumsq += v*v;
+  }
+  int n=(vals.size() - startOffset - endOffset);
+  mean=((float)sum)/n;
+  sd = sqrt(sumsq/n - mean*mean);  
+}
+
 int main(int argc, char* argv[]) {
     if (argc < 3) {
         std::cerr << "Usage: countme <input.bam> <input.bed>\n";
@@ -201,7 +218,10 @@ int main(int argc, char* argv[]) {
 
     // map: interval label -> (sum of per-read avg methylation, count of reads contributing)
     vector<std::unordered_map<std::string, std::pair<int, int>> > interval_sums(2);
-    vector<std::unordered_map<std::string, std::pair<int, int>> > interval_lengths(2);    
+    vector<std::unordered_map<std::string, std::pair<int, int>> > interval_lengths(2);
+    vector<std::unordered_map<std::string, vector<int> > > interval_length_vect(2);
+    vector<std::unordered_map<std::string, vector<int> > > interval_cpgCount(2);
+    vector<std::unordered_map<std::string, vector<int> > > interval_cpgMeth(2);    
     std::unordered_map<std::string, BedInterval> interval_bed;
     
     samFile* in = sam_open(argv[1], "r");
@@ -214,7 +234,7 @@ int main(int argc, char* argv[]) {
     bam1_t* b = bam_init1();
     int proc_read=0;
 
-    cerr << "Running countme v0.6" << endl;
+    cerr << "Running countme v0.61" << endl;
     // Initialie counters for all intervals
     vector<int> hi;
     hi.push_back(0);
@@ -228,6 +248,9 @@ int main(int argc, char* argv[]) {
 	  interval_sums[h][bed.label()].second = 0;
 	  interval_lengths[h][bed.label()].first = 0;
 	  interval_lengths[h][bed.label()].second = 0;
+	  interval_length_vect[h][bed.label()] = vector<int>();
+	  interval_cpgCount[h][bed.label()] = vector<int>();
+	  interval_cpgMeth[h][bed.label()] = vector<int>();	  
 	}
       }
     }
@@ -368,21 +391,21 @@ int main(int argc, char* argv[]) {
 	    }
 	    
 	    if (strand == 0) {
-	      readIntvStart = lower_bound(readAlnStart, readAlnEnd, bed.start);
-	      readIntvEnd   = upper_bound(readAlnStart, readAlnEnd, bed.end);
+	      readIntvStart = lower_bound(readAlnStart, readAlnEnd, bed.start-10);
+	      readIntvEnd   = upper_bound(readAlnStart, readAlnEnd, bed.end+10);
 	    }
 	    else {
-	      readIntvStart = lower_bound(readAlnStart, readAlnEnd, bed.end, NegComp);
-	      readIntvEnd   = upper_bound(readAlnStart, readAlnEnd, bed.start, NegComp);
+	      readIntvStart = upper_bound(readAlnStart, readAlnEnd, bed.end+10, NegComp);
+	      readIntvEnd   = lower_bound(readAlnStart, readAlnEnd, bed.start-10, NegComp);
 	    }
 	    if (readIntvStart == read_to_ref.end() or readIntvEnd == read_to_ref.end() ) { continue;}
 
-	    if ((strand == 0 and *readIntvStart > bed.start) or (strand == 1 and *readIntvEnd > bed.start)) {
+	    if ((strand == 0 and *readIntvStart > bed.start+10) or (strand == 1 and *readIntvEnd > bed.start+10)) {
 	      //	      cout << "Read starting inside interval" << endl;
 	      continue;
 	    }
-	    int readIntvStartIdx = readIntvStart - read_to_ref.begin();
-	    int readIntvEndIdx = readIntvEnd - read_to_ref.begin();
+	    int readIntvStartIdx = readIntvStart - read_to_ref.begin()+10;
+	    int readIntvEndIdx = readIntvEnd - read_to_ref.begin()-10;
 	    if (readIntvStartIdx >= readIntvEndIdx) {
 	    }
 
@@ -406,6 +429,9 @@ int main(int argc, char* argv[]) {
 	      interval_sums[h][bed.label()].second += total_c;
 	      //	      cout << read_name<< " hap: " << h << " adding length " << readIntvEndIdx - readIntvStartIdx<< " " << readIntvEndIdx  << " " << readIntvStartIdx << endl;
 	      interval_lengths[h][bed.label()].first += readIntvEndIdx - readIntvStartIdx;
+	      interval_cpgCount[h][bed.label()].push_back(total_c);
+	      interval_cpgMeth[h][bed.label()].push_back(methylated);
+	      interval_length_vect[h][bed.label()].push_back(readIntvEndIdx - readIntvStartIdx);
 	      interval_lengths[h][bed.label()].second += 1;
 	    }
 	    interval_bed[bed.label()] = bed;
@@ -415,6 +441,7 @@ int main(int argc, char* argv[]) {
 
     for (auto label: labels) {
       vector<double> avgMethRatio(2,0), avgCpGCount(2,0), avgLen(2,0), nReads(2,0);
+      bool didDelete=false;
       for (auto i =0; i < 2; i++) {
 	if (interval_sums[i].find(label) != interval_sums[i].end()) {
 	  const auto& [meSum, cpgCount] = interval_sums[i][label];
@@ -432,7 +459,86 @@ int main(int argc, char* argv[]) {
 	  avgCpGCount[i] = 0;
 	  avgLen[i] = 0;
 	}
+	//
+	// Check lengths for suspect values.
+	//
+	vector<int> toDelete;	
+	if (interval_length_vect[i][label].size() > 10) {
+	  vector<pair<int,int> >lengths;
+	  for (int li =0; li < interval_length_vect[i][label].size(); li++) {
+	    lengths.push_back(pair<int,int>(interval_length_vect[i][label][li], li));
+	  }
+	  std::sort(lengths.begin(), lengths.end());
+
+	  float loMean, loSD, fullMean, fullSD, hoMean, hoSD;
+	  SummaryStats(lengths, 1, 0, loMean, loSD);
+	  SummaryStats(lengths, 0, 1, hoMean, hoSD);
+	  int nValue=lengths.size();
+	  for (int l=0; l < nValue; l++) {
+	    if (interval_length_vect[i][label][l] > hoMean + 3*hoSD + 100 or
+		interval_length_vect[i][label][l] < hoMean - 3*hoSD - 100) {		
+	      //	      cerr << "DELETING: " << interval_length_vect[i][label][l] << endl;
+	      toDelete.push_back(l);
+	    }
+	  }
+
+	  int cur=0;
+	  for (int j=0; j < interval_length_vect[i][label].size(); j++) {
+	    bool deleteThis=false;
+	    for (auto d: toDelete) {
+	      if (j == d) {
+		deleteThis=true;
+		break;
+	      }
+	    }
+	    if (deleteThis == false) {
+	      interval_length_vect[i][label][cur] = interval_length_vect[i][label][j];
+	      interval_cpgCount[i][label][cur] =  interval_cpgCount[i][label][j];
+	      interval_cpgMeth[i][label][cur] =  interval_cpgMeth[i][label][j];
+	      cur++;
+	    }
+	    
+	  }
+	  interval_length_vect[i][label].resize(cur);
+	  interval_cpgCount[i][label].resize(cur);
+	  interval_cpgMeth[i][label].resize(cur);
+	  /*
+	  if (toDelete.size() > 0) {
+	    didDelete=true;
+	    cerr << "DELETED: " << toDelete.size() << endl;
+	    cerr << "LENGTHS " << i << ":" ;
+	    for (auto l: interval_length_vect[i][label]) {
+	      cerr << " " << l;
+	    }
+	    cerr << endl;
+	  }
+	  */
+	  //	  if (interval_length_vect[i][label][nValue-1] > loMean + 3*loSD + 100) {	  
+	  //	    cout << label << " SUSPECT high length " << loMean << "\t" << loSD << "\t" << loMean + 3*loSD << "\t" << interval_length_vect[i][label][nValue-1] << endl;
+	  //	  }
+	}	  
       }
+
+      for (auto h: {0,1}) {
+	int totMeth=0, totCpg=0, totLen=0;
+	for (int r=0; r < interval_cpgCount[h][label].size(); r++) {
+	  totCpg += interval_cpgCount[h][label][r];
+	  totMeth += interval_cpgMeth[h][label][r];
+	  totLen += interval_length_vect[h][label][r];
+	}
+	float newAvgCpg, newAvgMeth;
+	assert(interval_cpgCount[h][label].size() == interval_cpgMeth[h][label].size());
+	avgCpGCount[h] = ((float)totCpg) / interval_cpgCount[h][label].size();
+	avgMethRatio[h] = ((float)totMeth) / totCpg;
+	avgLen[h] = ((float)totLen)/interval_length_vect[h][label].size();
+	/*
+	if (didDelete > 0) {
+	  cerr << "Prev cpg:  " << avgCpGCount[h] << " new: " << totCpg << endl;
+	  cerr << "Prev meth:  " << avgMethRatio[h] << " new: " << newAvgMeth << endl;
+	}
+	*/
+      }
+      
       std::cout << interval_bed[label].chrom << "\t"
 		<< interval_bed[label].start << "\t" 
 		<< interval_bed[label].end << "\t"
