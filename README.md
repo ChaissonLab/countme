@@ -3,6 +3,7 @@ islands in intervals of reads that map to intervals in a reference.
 This way, if there are expansions in the read that are contained
 at the interval on the reference, the CpGs in the expansion are counted.
 
+The input bam must be phased with HP tags.
 The result that is output is the mean and variance of CpG, as well as the
 number of CpGs for each haplotype over a region.
 
@@ -21,10 +22,6 @@ for all CpG islands for all reads from a haplotype.
 
 
 
-To do: The interval lengths can be inconsistent due to inaccurate
-alignments near tandem repeats. This will be updated to consider the alignment
-around the BED interval to exclude inaccurate alignments at
-boundaries.
 
 
 
