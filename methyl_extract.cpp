@@ -528,9 +528,19 @@ int main(int argc, char* argv[]) {
 	}
 	float newAvgCpg, newAvgMeth;
 	assert(interval_cpgCount[h][label].size() == interval_cpgMeth[h][label].size());
-	avgCpGCount[h] = ((float)totCpg) / interval_cpgCount[h][label].size();
-	avgMethRatio[h] = ((float)totMeth) / totCpg;
-	avgLen[h] = ((float)totLen)/interval_length_vect[h][label].size();
+	if (interval_cpgCount[h][label].size() > 0) 
+	  avgCpGCount[h] = ((float)totCpg) / interval_cpgCount[h][label].size();
+	else
+	  avgCpGCount[h] = -1;
+	if (totCpg > 0)
+	  avgMethRatio[h] = ((float)totMeth) / totCpg;
+	else
+	  avgMethRatio[h] = -1;
+	if (interval_length_vect[h][label].size() > 0) 
+	  avgLen[h] = ((float)totLen)/interval_length_vect[h][label].size();
+	else
+	  avgLen[h] = -1;
+	
 	/*
 	if (didDelete > 0) {
 	  cerr << "Prev cpg:  " << avgCpGCount[h] << " new: " << totCpg << endl;
