@@ -169,7 +169,10 @@ bool NegComp(const int &a, const int &b) {
 int get_hp_tag(bam1_t* b, bool& found) {
     found = false;
     uint8_t* hp_data = bam_aux_get(b, "HP");
-    if (!hp_data) return -1;
+    if (!hp_data) {
+      cout << "ERROR, input data does not have HP phase tag" << endl;
+      exit(1);
+    } 
 
     char type = hp_data[0];
     if (type == 'i') {
@@ -315,8 +318,8 @@ void RevComp(string &seq, string&seq_rc) {
 
 
 int main(int argc, char* argv[]) {
-    if (argc < 3) {
-        std::cerr << "Usage: countme <input.bam> <input.bed>\n";
+    if (argc < 4) {
+        std::cerr << "Usage: countme <input.bam> <input.bed> <sample_name>\n";
         return 1;
     }
     vector<string> labels;
