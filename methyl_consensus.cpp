@@ -170,8 +170,8 @@ int get_hp_tag(bam1_t* b, bool& found) {
     found = false;
     uint8_t* hp_data = bam_aux_get(b, "HP");
     if (!hp_data) {
-      cout << "ERROR, input data does not have HP phase tag" << endl;
-      exit(1);
+      //      cout << "WARNING, input data does not have HP phase tag" << endl;
+      return -1;
     } 
 
     char type = hp_data[0];
@@ -211,13 +211,13 @@ struct AlignmentResult {
     vector<int> mapBtoA;  // For each position in B, its corresponding A index, or -1
 };
 
-AlignmentResult needlemanWunsch(const string& A, const string& B) {
+AlignmentResult needlemanWunsch(const string& A, const string& B, const string aMe="", const string bMe="") {
     int match = 1, mismatch = -1, gap = -1;
     int m = A.size(), n = B.size();
 
     vector<vector<int>> dp(m+1, vector<int>(n+1));
     vector<vector<char>> traceback(m+1, vector<char>(n+1));
-
+    
     // Initialize DP table
     for (int i = 0; i <= m; ++i) {
         dp[i][0] = 0;
@@ -230,16 +230,50 @@ AlignmentResult needlemanWunsch(const string& A, const string& B) {
     traceback[0][0] = '0';
 
     // Fill DP table
-    for (int i = 1; i <= m; ++i) {
+    if (aMe.size() == 0) {
+      for (int i = 1; i <= m; ++i) {
         for (int j = 1; j <= n; ++j) {
-            int diag = dp[i-1][j-1] + (A[i-1] == B[j-1] ? match : mismatch);
-            int up = dp[i-1][j] + gap;
-            int left = dp[i][j-1] + gap;
-            dp[i][j] = max({diag, up, left});
-            if (dp[i][j] == diag) traceback[i][j] = 'D';
-            else if (dp[i][j] == up) traceback[i][j] = 'U';
-            else traceback[i][j] = 'L';
+	  int diag = dp[i-1][j-1] + (A[i-1] == B[j-1] ? match : mismatch);
+	  int up = dp[i-1][j] + gap;
+	  int left = dp[i][j-1] + gap;
+	  dp[i][j] = max({diag, up, left});
+	  if (dp[i][j] == diag) traceback[i][j] = 'D';
+	  else if (dp[i][j] == up) traceback[i][j] = 'U';
+	  else traceback[i][j] = 'L';
         }
+      }
+    }
+    else {
+      for (int i = 1; i <= m; ++i) {
+        for (int j = 1; j <= n; ++j) {
+	  int diag;
+	  if (A[i-1] == B[j-1]) {
+	    if (bMe[j-1] == '*') {
+	      if (aMe[i-1] == '.') {
+		diag = dp[i-1][j-1] + match + 2;
+	      }
+	      else if (aMe[i-1] == '*') {
+		diag = dp[i-1][j-1] + match + 8;
+	      }
+	      else {
+		diag = dp[i-1][j-1] + match;
+	      }
+	    }
+	    else {
+	      diag = dp[i-1][j-1] + match;
+	    }
+	  }
+	  else {
+	    diag = dp[i-1][j-1] + mismatch;
+	  }
+	  int up = dp[i-1][j] + gap;
+	  int left = dp[i][j-1] + gap;
+	  dp[i][j] = max({diag, up, left});
+	  if (dp[i][j] == diag) traceback[i][j] = 'D';
+	  else if (dp[i][j] == up) traceback[i][j] = 'U';
+	  else traceback[i][j] = 'L';
+        }
+      }
     }
 
     // Traceback
@@ -326,7 +360,7 @@ int main(int argc, char* argv[]) {
     auto bed_intervals = read_bed_file(argv[2], labels);
 
     // map: interval label -> (sum of per-read avg methylation, count of reads contributing)
-    vector<std::unordered_map<std::string, vector<string> >>  interval_seqs(2);
+    vector<std::unordered_map<std::string, vector<string> >>  interval_seqs(2), interval_annot(2);    
     vector<std::unordered_map<std::string, vector< int> >>  interval_strands(2);    
     vector<std::unordered_map<std::string, vector<vector< int> > >>  interval_cpgs(2);
     vector<std::unordered_map<std::string, vector<vector< int> > >>  interval_methyl(2);
@@ -366,6 +400,7 @@ int main(int argc, char* argv[]) {
 	  interval_cpgCount[h][bed.label()] = vector<int>();
 	  interval_cpgMeth[h][bed.label()] = vector<int>();
 	  interval_seqs[h][bed.label()]=vector<string>();
+	  interval_annot[h][bed.label()]=vector<string>();	  
 	  interval_cpgs[h][bed.label()]=vector<vector<int> >();
 	  interval_methyl[h][bed.label()]=vector<vector<int> >();
 	  interval_strands[h][bed.label()]=vector<int>();	  
@@ -592,14 +627,6 @@ int main(int argc, char* argv[]) {
 	    string readSeq, readAnnot;
 	    readSeq = trSeq;
             for (int i = readIntvStartIdx; i < readIntvEndIdx; ++i) {
-	      //	      int rp; = read_to_ref[i];
-	      /*
-	      if (rp >= bed.start && rp < bed.end && i < seq.size()-1 and
-		  (( strand == 0 and seq[i] == 'C' and seq[i+1] == 'G')  or
-		   ( strand == 1 and i > 0 and seq[i-1] == 'C' and seq[i] == 'G'))) {
-	      */
-
-	      //	      if (rp >= bed.start && rp < bed.end && i < seq.size()-1 and
 	      int methIndex;
 	      if (strand == 0) {
 		methIndex =i;
@@ -640,6 +667,7 @@ int main(int argc, char* argv[]) {
 	      //	      cout << read_name<< " hap: " << h << " adding length " << readIntvEndIdx - readIntvStartIdx<< " " << readIntvEndIdx  << " " << readIntvStartIdx << endl;
 	      interval_seqs[h][bed.label()].push_back(trSeq);
 	      interval_cpgs[h][bed.label()].push_back(cpgPos);
+	      interval_annot[h][bed.label()].push_back(readAnnot);
 	      interval_methyl[h][bed.label()].push_back(methPos);	    
 	      interval_lengths[h][bed.label()].first += readIntvEndIdx - readIntvStartIdx;
 	      interval_cpgCount[h][bed.label()].push_back(total_c);
@@ -658,15 +686,6 @@ int main(int argc, char* argv[]) {
       vector<double> avgMethRatio(2,0), avgCpGCount(2,0), avgLen(2,0), nReads(2,0);
       bool didDelete=false;
       for (auto i =0; i < 2; i++) {
-	/*
-	for (int si=0; si < interval_seqs[i][label].size(); si++) {
-	  string &s=interval_seqs[i][label][si];
-	  cout << s.size() << " " << (int) interval_strands[i][label][si] << " " << s << endl;
-	}
-	*/
-	//	cout << endl;
-				
-
 	auto alignment_engine = spoa::AlignmentEngine::Create(
 							      spoa::AlignmentType::kSW,  5, -4, -8, -6, -8, -6);
 
@@ -680,15 +699,9 @@ int main(int argc, char* argv[]) {
 	vector<uint32_t> consCov;
 	trConsensus = graph.GenerateConsensus(interval_seqs[i][label].size()/3, &consCov);
 
-	map<int,int> cpgCount, methCount;
+	map<int,int> cpgCount, methCount, cpgCountRev, methCountRev;
 	for (auto j = 1; j< interval_seqs[i][label].size(); j++ ) {
-	  
 	  AlignmentResult alnRes = needlemanWunsch(trConsensus, interval_seqs[i][label][j]);
-
-	  /*	  cout << "Strand: " << interval_strands[i][label][j] << endl;	  
-	  cout << alnRes.alignedA << endl;
-	  cout << alnRes.alignedB << endl;
-	  */
 	  int bp=0;
 	  string alnCpg="";
 	  for ( auto ap=0; ap < alnRes.alignedB.size(); ap++) {
@@ -712,7 +725,7 @@ int main(int argc, char* argv[]) {
 	    }
 	    alnCpg.push_back(mc);
 	  }
-	  //	  cout << alnCpg<< endl << endl;
+
 
 	  for (auto cpgPos: interval_cpgs[i][label][j]) {
 	    int cpgDest = alnRes.mapBtoA[cpgPos];
@@ -756,16 +769,85 @@ int main(int argc, char* argv[]) {
 	    meAnnot[cpgIter.first] = '*';
 	  }
 	}
+	/*
+	  for (auto j = 1; j< interval_seqs[i][label].size(); j++ ) {
+	  cout << "trAnnot: " << meAnnot << endl;
+	  cout << "reAnnot: " << interval_annot[i][label][j] << endl << endl;
+	  }
+	*/
+
+
+	for (auto j = 1; j< interval_seqs[i][label].size(); j++ ) {
+	  AlignmentResult alnRes = needlemanWunsch(trConsensus, interval_seqs[i][label][j], meAnnot, interval_annot[i][label][j]);
+	  int bp=0;
+	  string alnCpg="";
+	  for ( auto ap=0; ap < alnRes.alignedB.size(); ap++) {
+	    char mc=' ';
+	    if (alnRes.alignedB[ap] != '-') {
+	      for (auto cp: interval_cpgs[i][label][j]) {
+		if (cp == bp) {
+		  mc='|';
+		  for (auto me: interval_methyl[i][label][j]) {
+		    if (me ==  bp) {
+		      mc = '*';
+		    }
+		  }
+		  break;
+		}
+	      }
+	      bp++;
+	    }
+	    else {
+	      mc='-';
+	    }
+	    alnCpg.push_back(mc);
+	  }
+
+	  for (auto cpgPos: interval_cpgs[i][label][j]) {
+	    int cpgDest = alnRes.mapBtoA[cpgPos];
+	    if (cpgDest != -1) {
+	      if (cpgCountRev.find(cpgDest) == cpgCountRev.end()) {
+		cpgCountRev[cpgDest] = 0;
+	      }
+	      cpgCountRev[cpgDest]++;
+	      if (methCountRev.find(cpgDest) == methCountRev.end()) {
+		methCountRev[cpgDest] = 0;
+	      }
+	    }
+	  }
+	  for (auto methPos: interval_methyl[i][label][j]) {
+	    int methDest = alnRes.mapBtoA[methPos];
+	    if (methDest != -1) {
+	      if (methCountRev.find(methDest) == methCountRev.end()) {
+		methCountRev[methDest] = 0;
+	      }
+	      methCountRev[methDest]++;
+	    }
+	    // This shouldn't happen
+	    if (cpgCountRev.find(methDest) == cpgCountRev.end()) {
+	      cpgCountRev[methDest] = 1;
+	    }
+	  }
+
+	  
+	}
 
 	//	cout << "h" << i <<" " << trConsensus << endl;
 	//	cout << "   " << meAnnot << endl;
+	/*
 	cout << sample_name << "\t" << label << "\t" << trConsensus.size() << "\t" << i << "\t";
 	for (auto cpgIter: cpgCount) {
 	  cout << cpgIter.first << "," << cpgIter.second << "," << ((float)methCount[cpgIter.first]) / cpgIter.second << "/";
 	}
 	cout << "-1,-1,-1" << endl;
+	*/
+	cout <<sample_name << "\t" << label << "\t" << trConsensus.size() << "\t" << i << "\t";
+	for (auto cpgIter: cpgCountRev) {
+	  cout << cpgIter.first << "," << cpgIter.second << "," << ((float)methCountRev[cpgIter.first]) / cpgIter.second << "/";
+	}
+	cout << "-1,-1,-1" << endl;
 	
-	
+      	
 	if (interval_sums[i].find(label) != interval_sums[i].end()) {
 	  const auto& [meSum, cpgCount] = interval_sums[i][label];
 	  const auto& [lenSum, readCount] = interval_lengths[i][label];
@@ -802,7 +884,6 @@ int main(int argc, char* argv[]) {
 	  for (int l=0; l < nValue; l++) {
 	    if (interval_length_vect[i][label][l] > hoMean + 3*hoSD + 100 or
 		interval_length_vect[i][label][l] < hoMean - 3*hoSD - 100) {		
-	      //	      cerr << "DELETING: " << interval_length_vect[i][label][l] << endl;
 	      toDelete.push_back(l);
 	    }
 	  }
@@ -827,23 +908,9 @@ int main(int argc, char* argv[]) {
 	  interval_length_vect[i][label].resize(cur);
 	  interval_cpgCount[i][label].resize(cur);
 	  interval_cpgMeth[i][label].resize(cur);
-	  /*
-	  if (toDelete.size() > 0) {
-	    didDelete=true;
-	    cerr << "DELETED: " << toDelete.size() << endl;
-	    cerr << "LENGTHS " << i << ":" ;
-	    for (auto l: interval_length_vect[i][label]) {
-	      cerr << " " << l;
-	    }
-	    cerr << endl;
-	  }
-	  */
-	  //	  if (interval_length_vect[i][label][nValue-1] > loMean + 3*loSD + 100) {	  
-	  //	    cout << label << " SUSPECT high length " << loMean << "\t" << loSD << "\t" << loMean + 3*loSD << "\t" << interval_length_vect[i][label][nValue-1] << endl;
-	  //	  }
 	}	  
       }
-
+        
       for (auto h: {0,1}) {
 	int totMeth=0, totCpg=0, totLen=0;
 	for (int r=0; r < interval_cpgCount[h][label].size(); r++) {
@@ -866,12 +933,6 @@ int main(int argc, char* argv[]) {
 	else
 	  avgLen[h] = -1;
 	
-	/*
-	if (didDelete > 0) {
-	  cerr << "Prev cpg:  " << avgCpGCount[h] << " new: " << totCpg << endl;
-	  cerr << "Prev meth:  " << avgMethRatio[h] << " new: " << newAvgMeth << endl;
-	}
-	*/
       }
     }
 

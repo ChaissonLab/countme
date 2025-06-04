@@ -12,7 +12,7 @@ $(SPOA_DIR)/lib64/libspoa.so:
 	cd spoa/build && meson install --destdir=../install/
 
 mecons: methyl_consensus.cpp $(SPOA_DIR)/lib64/libspoa.so
-	g++ -g -I$(SPOA_DIR)/include  methyl_consensus.cpp -L$(SPOA_DIR)/lib64/ -lspoa -L $(CONDA_PREFIX)/lib -lhts -I $(CONDA_PREFIX)/include -lz  -o mecons  -Wl,-rpath=$(PWD)/$(SPOA_DIR)/lib64
+	g++ -O2 -I$(SPOA_DIR)/include  methyl_consensus.cpp -L$(SPOA_DIR)/lib64/ -lspoa -L $(CONDA_PREFIX)/lib -lhts -I $(CONDA_PREFIX)/include -lz  -o mecons  -Wl,-rpath=$(PWD)/$(SPOA_DIR)/lib64
 
 #	g++ -fsanitize=address -g -I$(SPOA_DIR)/include  methyl_consensus.cpp -L$(SPOA_DIR)/lib64/ -lspoa -L $(CONDA_PREFIX)/lib -lhts -I $(CONDA_PREFIX)/include -lz  -o mecons 
 
