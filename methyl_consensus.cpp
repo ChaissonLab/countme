@@ -138,8 +138,8 @@ std::vector<int> parse_mm_tag(const std::string& mm_tag, const std::string& seq,
 
       
       pos+=delta;
-      if (delta != 0) {
-	mod_positions.push_back(strPos);	
+
+      mod_positions.push_back(strPos);	
 	/*	if (strand == 0) {
 	  mod_positions.push_back(strPos);
 	}
@@ -147,7 +147,6 @@ std::vector<int> parse_mm_tag(const std::string& mm_tag, const std::string& seq,
 	  mod_positions.push_back(seq.size() - strPos - 1);
 	}
 	*/
-      }
       strPos++;
       delta_strm.get();
     }
@@ -181,7 +180,9 @@ int get_hp_tag(bam1_t* b, bool& found) {
     } else if (type == 'I') {
         found = true;
         return static_cast<int>(bam_aux2i(hp_data));
-    } else {
+    } else if (type == 'C') {
+      return static_cast<int>(bam_aux2i(hp_data));
+    }else {
         // Unexpected type
         return -1;
     }
@@ -419,6 +420,7 @@ int main(int argc, char* argv[]) {
 
       
 	  if (b->core.flag & BAM_FUNMAP) continue;
+	  if (b->core.flag & BAM_FSUPPLEMENTARY) continue;		  
 	  ++proc_read;
 	  //	  if (proc_read == 10) {exit(0);}
 	  if (proc_read % 100000 == 0) {

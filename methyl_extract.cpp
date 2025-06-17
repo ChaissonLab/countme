@@ -111,6 +111,9 @@ void get_mm_annot(const std::string& mm_tag, const std::string& seq, char base, 
 
 
 std::vector<int> parse_mm_tag(const std::string& mm_tag, const std::string& seq, char base, int strand) {
+  if (mm_tag.substr(0,3) != "C+m") {
+    return vector<int>();
+  }
     std::vector<int> mod_positions;
     //    if (mm_tag.empty() || mm_tag[0] != base) return mod_positions;
     string mmDeltaStr = GetMMDeltaStr(mm_tag);
@@ -123,26 +126,27 @@ std::vector<int> parse_mm_tag(const std::string& mm_tag, const std::string& seq,
     while(delta_strm) {
       int delta=0;
       char c;
+      assert(strPos < seq.size());
       if ( !(delta_strm >> delta) ) {
 	break;
       }
       int nc=0;
+      // Skip past delta occurrences of base
       while (strPos < seq.size() and nc < delta) {
 	if (seq[strPos] == base) { nc++;}
 	strPos++;
       }
+      // Keep searching forward until the next occurrence of the base is found.
       while (strPos < seq.size() and seq[strPos] != base) { strPos++;}
 
       
       pos+=delta;
-      if (delta != 0) {
-	if (strand == 0) {
-	  mod_positions.push_back(strPos);
-	}
-	else {
-	  mod_positions.push_back(seq.size() - strPos - 1);
-	}
-      }
+      //      if (strand == 0) {
+      mod_positions.push_back(strPos);
+	//      }
+	//      else {
+	//	mod_positions.push_back(seq.size() - strPos - 1);
+	//      }
       strPos++;
       delta_strm.get();
     }
@@ -171,6 +175,9 @@ int get_hp_tag(bam1_t* b, bool& found) {
         found = true;
         return bam_aux2i(hp_data);
     } else if (type == 'I') {
+        found = true;
+        return static_cast<int>(bam_aux2i(hp_data));
+    } else if (type == 'C') {
         found = true;
         return static_cast<int>(bam_aux2i(hp_data));
     } else {
@@ -210,12 +217,17 @@ void SummaryStats(vector<pair<int,int> > &vals, int startOffset, int endOffset, 
 
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        std::cerr << "Usage: countme <input.bam> <input.bed>\n";
+        std::cerr << "Usage: countme <input.bam> <input.bed> [--onlyPhased] \n";
         return 1;
     }
     vector<string> labels;
     auto bed_intervals = read_bed_file(argv[2], labels);
-
+    bool onlyPhased=false;
+    for (auto argi=3; argi < argc; ++argi) {
+      if (strcmp(argv[argi], "--onlyPhased") == 0) {
+	onlyPhased=true;
+      }
+    }
     // map: interval label -> (sum of per-read avg methylation, count of reads contributing)
     vector<std::unordered_map<std::string, std::pair<int, int>> > interval_sums(2);
     vector<std::unordered_map<std::string, std::pair<int, int>> > interval_lengths(2);
@@ -257,6 +269,7 @@ int main(int argc, char* argv[]) {
     while (sam_read1(in, hdr, b) >= 0) {
       
         if (b->core.flag & BAM_FUNMAP) continue;
+	if (b->core.flag & BAM_FSUPPLEMENTARY) continue;	
 	++proc_read;
 	if (proc_read % 100000 == 0) {
 	  cerr << "Proc " << proc_read << endl;
@@ -267,7 +280,10 @@ int main(int argc, char* argv[]) {
 	
         std::string read_name = bam_get_qname(b);
 	bool hpFound;
+	
 	int haplotype = get_hp_tag(b, hpFound);
+	//	cout << "hap: "<< haplotype << endl;
+	if (haplotype == -1 and onlyPhased) { continue;}
 	vector<int> hapIndices;
 	GetHapIndices(haplotype, hapIndices);
         auto chrom_it = bed_intervals.find(chrom);
@@ -282,24 +298,30 @@ int main(int argc, char* argv[]) {
 	  ml_data = bam_aux_get(b, "Ml");
 	}
 	
-        if (!mm_data || !ml_data) continue;
+	//if (!mm_data || !ml_data) continue;
+	int read_len = b->core.l_qseq;
+	std::string seq(read_len, 'N');
+	uint8_t* seq_ptr = bam_get_seq(b);
+	for (int i = 0; i < read_len; ++i)
+	  seq[i] = seq_nt16_str[bam_seqi(seq_ptr, i)];
+	string mm_str;
+	uint32_t count=0;
+	std::vector<uint8_t> meth_status(read_len, 0);
+	vector<int> ml_array;
+	if (mm_data and ml_data) {
+	  
+	  mm_str = bam_aux2Z(mm_data);
+	  if (read_len == 0) { continue;}
 
-        std::string mm_str = bam_aux2Z(mm_data);
-        int read_len = b->core.l_qseq;
-	if (read_len == 0) { continue;}
-        std::vector<uint8_t> meth_status(read_len, 0);
 
-        std::string seq(read_len, 'N');
-        uint8_t* seq_ptr = bam_get_seq(b);
-        for (int i = 0; i < read_len; ++i)
-            seq[i] = seq_nt16_str[bam_seqi(seq_ptr, i)];
+	  
+	  uint8_t type = ml_data[0];
+	  if (type != 'B' || ml_data[1] != 'C') continue;
 
-        uint8_t type = ml_data[0];
-        if (type != 'B' || ml_data[1] != 'C') continue;
-        uint32_t count;
-        std::memcpy(&count, ml_data + 2, sizeof(uint32_t));
-	vector<int> ml_array( count);
-	for (auto i=0; i < count; i++ ){ ml_array[i] = ml_data[i+6];}
+	  std::memcpy(&count, ml_data + 2, sizeof(uint32_t));
+	  ml_array.resize( count);
+	  for (auto i=0; i < count; i++ ){ ml_array[i] = ml_data[i+6];}
+	}
 	  //        const uint8_t* ml_array = reinterpret_cast<uint8_t*>(ml_data + 6);
 
 	char base = 'C';
@@ -308,9 +330,9 @@ int main(int argc, char* argv[]) {
 	if (flag & BAM_FREVERSE) {
 	  strand = 1;
 	}
-
+	string seq_rc(seq);
+	string methylSeq=seq;
 	if (strand == 1 ) {
-	  string seq_rc(seq);
 	  int n=seq.size();
 	  for (auto i = 0; i < seq.size(); i++) {
 	    if (seq[i] == 'A') { seq_rc[n-i-1] = 'T';}
@@ -318,10 +340,12 @@ int main(int argc, char* argv[]) {
 	    if (seq[i] == 'C') { seq_rc[n-i-1] = 'G';}
 	    if (seq[i] == 'G') { seq_rc[n-i-1] = 'C';}	    
 	  }
-	  seq=seq_rc;
+	  methylSeq=seq_rc;
 	}
-
-        auto pos_c = parse_mm_tag(mm_str, seq, base, strand);
+	
+        vector<int> pos_c;
+	if (mm_str.size() > 0)
+	  pos_c = parse_mm_tag(mm_str, methylSeq, base, strand);
 
         std::vector<int> read_to_ref(read_len, -1);
         uint32_t* cigar = bam_get_cigar(b);
@@ -333,25 +357,13 @@ int main(int argc, char* argv[]) {
 
             if (op == BAM_CMATCH || op == BAM_CEQUAL || op == BAM_CDIFF) {
                 for (uint32_t j = 0; j < len; ++j) {
-		  if (strand == false) {
-                    if (read_pos < read_len) read_to_ref[read_pos++] = ref_pos++;
-		  }
-		  else {
-		    ++read_pos;
-                    if (read_pos > 0) read_to_ref[seq.size() - read_pos] = ref_pos++;
-		  }
+		  if (read_pos < read_len) read_to_ref[read_pos++] = ref_pos++;
                 }
             } else if (op == BAM_CDEL || op == BAM_CREF_SKIP) {
                 ref_pos += len;
             } else if (op == BAM_CINS || op == BAM_CSOFT_CLIP) {
 	      for (uint32_t j=0; j < len; ++j) {
-		  if (strand == false) {
-                    if (read_pos < read_len) read_to_ref[read_pos++] = ref_pos;
-		  }
-		  else {
-		    ++read_pos;
-                    if (read_pos > 0) read_to_ref[seq.size() - read_pos] = ref_pos;
-		  }
+		if (read_pos < read_len) read_to_ref[read_pos++] = ref_pos;
 	      }		
             }
         }
@@ -367,8 +379,13 @@ int main(int argc, char* argv[]) {
         size_t m_idx = 0;
 	
         for (int pos : pos_c) {
-            if (m_idx >= count) break;
+	  if ((int) m_idx >= (int) count) break;
 	    assert(pos < meth_status.size());
+	    /*
+	    if (true or (read_to_ref[pos] >= 147911979 && read_to_ref[pos]< 147912111)) {
+	      cout << "READMETH: " << pos << "\t" << read_to_ref[pos] << "\t" << (int) ml_array[m_idx] << endl;
+	    }
+	    */
             meth_status[pos] = ml_array[m_idx++];
         }
 
@@ -390,17 +407,12 @@ int main(int argc, char* argv[]) {
 	      continue;
 	    }
 	    
-	    if (strand == 0) {
-	      readIntvStart = lower_bound(readAlnStart, readAlnEnd, bed.start-10);
-	      readIntvEnd   = upper_bound(readAlnStart, readAlnEnd, bed.end+10);
-	    }
-	    else {
-	      readIntvStart = upper_bound(readAlnStart, readAlnEnd, bed.end+10, NegComp);
-	      readIntvEnd   = lower_bound(readAlnStart, readAlnEnd, bed.start-10, NegComp);
-	    }
+
+	    readIntvStart = lower_bound(readAlnStart, readAlnEnd, bed.start-10);
+	    readIntvEnd   = upper_bound(readAlnStart, readAlnEnd, bed.end+10);
 	    if (readIntvStart == read_to_ref.end() or readIntvEnd == read_to_ref.end() ) { continue;}
 
-	    if ((strand == 0 and *readIntvStart > bed.start+10) or (strand == 1 and *readIntvEnd > bed.start+10)) {
+	    if (*readIntvStart > bed.start+10 or *readIntvEnd < bed.start+10) {
 	      //	      cout << "Read starting inside interval" << endl;
 	      continue;
 	    }
@@ -412,19 +424,40 @@ int main(int argc, char* argv[]) {
 	    else {
 	      nMatched++;
 	    }
+	    int read_c=0, read_meth=0;
+	    int rangeMeth=0;
+	    for (int i=readIntvStartIdx; i < readIntvEndIdx; ++i) {
+	      if (meth_status[i] >= 50) { rangeMeth++;}
+	    }
             for (int i = readIntvStartIdx; i < readIntvEndIdx; ++i) {
                 int rp = read_to_ref[i];
-                if (rp >= bed.start && rp < bed.end && i < seq.size()-1 and
-		    (( strand == 0 and seq[i] == 'C' and seq[i+1] == 'G')  or
-		     ( strand == 1 and i > 0 and seq[i-1] == 'C' and seq[i] == 'G'))) {
+		int methIndex;
+		int rcPos = seq.size() - i - 1;
+		if (strand == 0) {
+		  methIndex =i;
+		}
+		else {
+		  methIndex =seq.size() - i - 1;
+		  if (methIndex < 0) {
+		    methIndex = 0;
+		  }
+		}
+		
+		//		cout << rp << "\t" << bed.start << "\t" << bed.end << "\t" << i << "\t" << seq[i-1] << "\t" << seq[i]  << "\t" << seq[i+1] << "\t" << (int) meth_status[methIndex-1] << "\t" << (int) meth_status[methIndex] << "\t" << (int) meth_status[methIndex+1] << endl;
+                if (rp >= bed.start and rp < bed.end and i < seq.size()-1 and
+		    ((strand == 0 and seq[i] == 'C' and seq[i+1] == 'G') or
+		     (strand == 1 and seq[i] == 'G' and seq[i-1] == 'C'))) {
 		  total_c++;
-                    if (meth_status[i] >= 127) {
+		  read_c++;
+                    if (meth_status[methIndex] >= 127) {
 		      ++methylated;
+		      read_meth++;
                     }
                 }
             }
-
 	    for (auto h: hapIndices) {
+	      //	      cout << read_name << "\t" << (int) h << "\t" << read_c << "\t" << read_meth << "\t" << readIntvEndIdx - readIntvStartIdx << "\t" << rangeMeth << endl;
+	      
 	      interval_sums[h][bed.label()].first += methylated;
 	      interval_sums[h][bed.label()].second += total_c;
 	      //	      cout << read_name<< " hap: " << h << " adding length " << readIntvEndIdx - readIntvStartIdx<< " " << readIntvEndIdx  << " " << readIntvStartIdx << endl;
@@ -475,8 +508,11 @@ int main(int argc, char* argv[]) {
 	  SummaryStats(lengths, 0, 1, hoMean, hoSD);
 	  int nValue=lengths.size();
 	  for (int l=0; l < nValue; l++) {
-	    if (interval_length_vect[i][label][l] > hoMean + 3*hoSD + 100 or
-		interval_length_vect[i][label][l] < hoMean - 3*hoSD - 100) {		
+
+	    if (interval_length_vect[i][label][l] > hoMean + 2*hoSD + 50 or
+		interval_length_vect[i][label][l] < loMean - 2*loSD - 50) {
+	      int burstLength=abs(interval_length_vect[i][label][l] - hoMean);
+	      cout << "BURST:\t" << label << "\t" << l << "\t" << interval_length_vect[i][label][l] << "\t" << burstLength << endl;
 	      //	      cerr << "DELETING: " << interval_length_vect[i][label][l] << endl;
 	      toDelete.push_back(l);
 	    }
